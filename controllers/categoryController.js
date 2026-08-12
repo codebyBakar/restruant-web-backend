@@ -1,6 +1,7 @@
 const asyncHandler = require("../middleware/asyncHandler");
 const Category = require("../models/Category");
 const Order = require("../models/Order");
+const Product = require("../models/Product");
 const { cloudinary, getFileUrl, isCloudinaryConfigured } = require("../config/cloudinary");
 const { clearCacheByPrefix } = require("../middleware/cache");
 
@@ -43,6 +44,22 @@ exports.getCategoryOrderStats = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: categories.map((c) => ({ _id: c._id, name: c.name, orderCount: counts[c._id] || 0 })),
+  });
+});
+
+exports.getCategoryProductStats = asyncHandler(async (req, res) => {
+  const categories = await Category.find({}).select("_id name");
+
+  const productStats = await Product.aggregate([
+    { $group: { _id: "$category", count: { $sum: 1 } } },
+  ]);
+
+  const counts = {};
+  productStats.forEach((s) => (counts[s._id] = s.count));
+
+  res.status(200).json({
+    success: true,
+    data: categories.map((c) => ({ _id: c._id, name: c.name, productCount: counts[c._id] || 0 })),
   });
 });
 

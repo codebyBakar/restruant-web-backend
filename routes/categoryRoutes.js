@@ -3,6 +3,7 @@ const {
   getCategories,
   getCategory,
   getCategoryOrderStats,
+  getCategoryProductStats,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -17,6 +18,7 @@ const router = express.Router();
 
 router.get("/", [...categoryList], validate, cacheMiddleware(300), getCategories);
 router.get("/stats/orders", protect, authorize("admin", "staff"), getCategoryOrderStats);
+router.get("/stats/products", protect, authorize("admin", "staff"), getCategoryProductStats);
 router.get("/:slug", slugParam("slug"), validate, cacheMiddleware(300), getCategory);
 
 router.post(
