@@ -16,8 +16,7 @@ exports.getProducts = asyncHandler(async (req, res) => {
   if (availableOnly === "true") query.isAvailable = true;
   if (search) {
     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(escaped, "i");
-    query.$or = [{ name: regex }, { description: regex }, { ingredients: regex }];
+    query.name = { $regex: `\\b${escaped}\\b`, $options: "i" };
   }
 
   const sortMap = {
