@@ -92,7 +92,7 @@ exports.updateCategory = asyncHandler(async (req, res) => {
 
 exports.deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(req.params.id);
-  if (!category) return res.status(404).json({ success: false, message: "Category not found" });
+  if (!category) return res.status(204).json({ success: false, message: "Category not found" });
 
   if (category.image?.publicId && isCloudinaryConfigured) {
     await cloudinary.uploader.destroy(category.image.publicId).catch(() => {});
@@ -100,4 +100,16 @@ exports.deleteCategory = asyncHandler(async (req, res) => {
   await category.deleteOne();
   clearCacheByPrefix("/api/categories");
   res.status(200).json({ success: true, message: "Category deleted" });
+});
+
+exports.reorderCategories = asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: "Invalid IDs array" });
+  }
+  for (let i = 0; i < ids.length; i++) {
+    await Category.findByIdAndUpdate(ids[i], { displayOrder: i });
+  }
+  clearCacheByPrefix("/api/categories");
+  res.status(200).json({ success: true, message: "Categories reordered" });
 });

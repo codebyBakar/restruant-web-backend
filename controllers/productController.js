@@ -9,7 +9,7 @@ exports.getProducts = asyncHandler(async (req, res) => {
   const { category, tag, search, isVeg, featured, sort, page = 1, limit = 20, availableOnly } = req.query;
 
   const query = {};
-  if (category) query.category = category;
+  if (category) query.category = category.includes(",") ? { $in: category.split(",") } : category;
   if (tag) query.tags = tag;
   if (isVeg !== undefined) query.isVeg = isVeg === "true";
   if (featured === "true") query.isFeatured = true;
