@@ -66,6 +66,9 @@ const orderSchema = new mongoose.Schema(
     pickupTime: { type: String, default: "" },
     deliveryTime: { type: String, default: "" },
     pickupPrepMinutes: { type: Number, default: 25 },
+    // Soft-delete flags: admin and customer deletes are independent of each other.
+    deletedByAdmin: { type: Date, default: null },
+    deletedByUser: { type: Date, default: null },
   },
   { timestamps: true }
 );

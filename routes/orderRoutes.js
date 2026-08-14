@@ -10,6 +10,7 @@ const {
   updateOrderStatus,
   deleteOrder,
   bulkDeleteOrders,
+  deleteMyOrder,
   getDashboardStats,
   uploadPaymentScreenshot,
 } = require("../controllers/orderController");
@@ -38,6 +39,7 @@ router.post("/online", upload.single("screenshot"), parseOrderBody, createOrderV
 router.post("/:orderNumber/screenshot", uploadScreenshotV, validate, upload.single("screenshot"), uploadPaymentScreenshot);
 router.get("/track/:orderNumber", trackOrderV, validate, trackOrder);
 router.get("/my-orders", myOrdersV, validate, getMyOrders);
+router.delete("/my/:orderNumber", trackOrderV, validate, deleteMyOrder);
 
 router.get("/", protect, authorize("admin", "staff"), getOrders);
 router.get("/stats/dashboard", protect, authorize("admin", "staff"), getDashboardStats);

@@ -265,8 +265,36 @@ exports.trackOrder = asyncHandler(async (req, res) => {
 exports.getMyOrders = asyncHandler(async (req, res) => {
   const { email } = req.query;
   if (!email) return res.status(400).json({ success: false, message: "Email is required" });
-  const orders = await Order.find({ "customer.email": email }).sort({ createdAt: -1 });
+  const orders = await Order.find({ "customer.email": email, deletedByUser: null }).sort({ createdAt: -1 });
   res.status(200).json({ success: true, count: orders.length, data: orders });
+});
+
+// @desc Delete one of my own previous orders (customer side, independent of admin)
+// @route DELETE /api/orders/my/:orderNumber
+exports.deleteMyOrder = asyncHandler(async (req, res) => {
+  const { orderNumber } = req.params;
+  const { email, token } = req.query;
+
+  if (!email && !token) {
+    return res.status(400).json({ success: false, message: "Email is required" });
+  }
+
+  const query = { orderNumber };
+  if (token) query.accessToken = token;
+  else query["customer.email"] = email;
+
+  const order = await Order.findOne(query);
+  if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+  const deletable = ["delivered", "pickup_complete", "cancelled"];
+  if (!deletable.includes(order.orderStatus)) {
+    return res.status(400).json({ success: false, message: "Only completed or cancelled orders can be removed from your history" });
+  }
+
+  order.deletedByUser = new Date();
+  await order.save();
+  clearCacheByPrefix("/api/orders");
+  res.status(200).json({ success: true, message: "Order removed from your history" });
 });
 
 // @desc Get recently placed orders (lightweight, for admin live notifications)
@@ -274,7 +302,7 @@ exports.getMyOrders = asyncHandler(async (req, res) => {
 exports.getRecentOrders = asyncHandler(async (req, res) => {
   const minutes = Math.min(Math.max(parseInt(req.query.minutes, 10) || 240, 5), 1440);
   const since = new Date(Date.now() - minutes * 60 * 1000);
-  const orders = await Order.find({ createdAt: { $gte: since } })
+  const orders = await Order.find({ createdAt: { $gte: since }, deletedByAdmin: null })
     .sort({ createdAt: -1 })
     .limit(60)
     .select("_id orderNumber orderType orderStatus total createdAt customer.name");
@@ -299,6 +327,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
       { "customer.phone": { $regex: search, $options: "i" } },
     ];
   }
+  query.deletedByAdmin = null;
 
   const pageNum = Math.max(parseInt(page, 10), 1);
   const limitNum = Math.min(Math.max(parseInt(limit, 10), 1), 100);
@@ -324,7 +353,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
 // @desc Get single order (admin)
 // @route GET /api/orders/:id
 exports.getOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findOne({ _id: req.params.id, deletedByAdmin: null });
   if (!order) return res.status(404).json({ success: false, message: "Order not found" });
   res.status(200).json({ success: true, data: order });
 });
@@ -352,9 +381,9 @@ exports.bulkDeleteOrders = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "No orders selected" });
   }
 
-  const result = await Order.deleteMany(query);
+  const result = await Order.updateMany(query, { $set: { deletedByAdmin: new Date() } });
   clearCacheByPrefix("/api/orders");
-  res.status(200).json({ success: true, deleted: result.deletedCount, message: `${result.deletedCount} order(s) deleted` });
+  res.status(200).json({ success: true, deleted: result.modifiedCount, message: `${result.modifiedCount} order(s) deleted` });
 });
 
 // @desc Delete order (admin) - only completed or cancelled orders
@@ -371,9 +400,12 @@ exports.deleteOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  await order.deleteOne();
+  // Soft delete: admin removes it from the admin panel only; the customer's
+  // previous-order history stays independent (deletedByUser controls that side).
+  order.deletedByAdmin = new Date();
+  await order.save();
   clearCacheByPrefix("/api/orders");
-  res.status(200).json({ success: true, message: "Order deleted successfully" });
+  res.status(200).json({ success: true, message: "Order deleted from admin" });
 });
 
 // @desc Update order status (admin)
@@ -434,14 +466,17 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
   today.setHours(0, 0, 0, 0);
 
   const [todayOrders, totalOrders, pendingOrders, revenueAgg, statusCounts] = await Promise.all([
-    Order.countDocuments({ createdAt: { $gte: today } }),
-    Order.countDocuments(),
-    Order.countDocuments({ orderStatus: { $in: ["pending", "confirmed", "preparing"] } }),
+    Order.countDocuments({ createdAt: { $gte: today }, deletedByAdmin: null }),
+    Order.countDocuments({ deletedByAdmin: null }),
+    Order.countDocuments({ orderStatus: { $in: ["pending", "confirmed", "preparing"] }, deletedByAdmin: null }),
     Order.aggregate([
-      { $match: { paymentStatus: "paid" } },
+      { $match: { paymentStatus: "paid", deletedByAdmin: null } },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]),
-    Order.aggregate([{ $group: { _id: "$orderStatus", count: { $sum: 1 } } }]),
+    Order.aggregate([
+      { $match: { deletedByAdmin: null } },
+      { $group: { _id: "$orderStatus", count: { $sum: 1 } } },
+    ]),
   ]);
 
   res.status(200).json({
