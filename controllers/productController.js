@@ -127,6 +127,38 @@ exports.updateProduct = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: product });
 });
 
+// @desc Bulk delete products (selected ids or all)
+// @route DELETE /api/products/bulk
+exports.bulkDeleteProducts = asyncHandler(async (req, res) => {
+  const { ids, all } = req.body;
+
+  let query = null;
+  if (all) {
+    query = {};
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const validIds = ids.filter((id) => /^[0-9a-fA-F]{24}$/.test(String(id)));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid products selected" });
+    }
+    query = { _id: { $in: validIds } };
+  } else {
+    return res.status(400).json({ success: false, message: "No products selected" });
+  }
+
+  const products = await Product.find(query).select("images");
+  if (isCloudinaryConfigured) {
+    for (const product of products) {
+      for (const img of product.images) {
+        if (img.publicId) await cloudinary.uploader.destroy(img.publicId).catch(() => {});
+      }
+    }
+  }
+
+  const result = await Product.deleteMany(query);
+  clearCacheByPrefix("/api/products");
+  res.status(200).json({ success: true, deleted: result.deletedCount, message: `${result.deletedCount} product(s) deleted` });
+});
+
 // @desc Delete product
 // @route DELETE /api/products/:id
 exports.deleteProduct = asyncHandler(async (req, res) => {

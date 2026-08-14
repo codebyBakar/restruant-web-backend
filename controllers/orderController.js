@@ -269,6 +269,18 @@ exports.getMyOrders = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, count: orders.length, data: orders });
 });
 
+// @desc Get recently placed orders (lightweight, for admin live notifications)
+// @route GET /api/orders/recent
+exports.getRecentOrders = asyncHandler(async (req, res) => {
+  const minutes = Math.min(Math.max(parseInt(req.query.minutes, 10) || 240, 5), 1440);
+  const since = new Date(Date.now() - minutes * 60 * 1000);
+  const orders = await Order.find({ createdAt: { $gte: since } })
+    .sort({ createdAt: -1 })
+    .limit(60)
+    .select("_id orderNumber orderType orderStatus total createdAt customer.name");
+  res.status(200).json({ success: true, count: orders.length, data: orders });
+});
+
 // @desc Get all orders (admin) with filters
 // @route GET /api/orders
 exports.getOrders = asyncHandler(async (req, res) => {
@@ -315,6 +327,34 @@ exports.getOrder = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: "Order not found" });
   res.status(200).json({ success: true, data: order });
+});
+
+// @desc Bulk delete orders (selected ids or by status) - only completed/cancelled
+// @route DELETE /api/orders/bulk
+exports.bulkDeleteOrders = asyncHandler(async (req, res) => {
+  const { ids, statuses } = req.body;
+  const deletable = ["delivered", "pickup_complete", "cancelled"];
+
+  let query = null;
+  if (Array.isArray(statuses) && statuses.length > 0) {
+    const invalid = statuses.filter((s) => !deletable.includes(s));
+    if (invalid.length) {
+      return res.status(400).json({ success: false, message: `Only ${deletable.join(", ")} orders can be deleted` });
+    }
+    query = { orderStatus: { $in: statuses } };
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const validIds = ids.filter((id) => /^[0-9a-fA-F]{24}$/.test(String(id)));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid orders selected" });
+    }
+    query = { _id: { $in: validIds }, orderStatus: { $in: deletable } };
+  } else {
+    return res.status(400).json({ success: false, message: "No orders selected" });
+  }
+
+  const result = await Order.deleteMany(query);
+  clearCacheByPrefix("/api/orders");
+  res.status(200).json({ success: true, deleted: result.deletedCount, message: `${result.deletedCount} order(s) deleted` });
 });
 
 // @desc Delete order (admin) - only completed or cancelled orders

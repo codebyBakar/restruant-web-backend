@@ -90,6 +90,34 @@ exports.updateCategory = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: category });
 });
 
+exports.bulkDeleteCategories = asyncHandler(async (req, res) => {
+  const { ids, all } = req.body;
+
+  let query = null;
+  if (all) {
+    query = {};
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const validIds = ids.filter((id) => /^[0-9a-fA-F]{24}$/.test(String(id)));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid categories selected" });
+    }
+    query = { _id: { $in: validIds } };
+  } else {
+    return res.status(400).json({ success: false, message: "No categories selected" });
+  }
+
+  const categories = await Category.find(query).select("image");
+  if (isCloudinaryConfigured) {
+    for (const cat of categories) {
+      if (cat.image?.publicId) await cloudinary.uploader.destroy(cat.image.publicId).catch(() => {});
+    }
+  }
+
+  const result = await Category.deleteMany(query);
+  clearCacheByPrefix("/api/categories");
+  res.status(200).json({ success: true, deleted: result.deletedCount, message: `${result.deletedCount} categor${result.deletedCount === 1 ? "y" : "ies"} deleted` });
+});
+
 exports.deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(req.params.id);
   if (!category) return res.status(204).json({ success: false, message: "Category not found" });

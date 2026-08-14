@@ -101,7 +101,13 @@ const login = [
 ];
 
 const updateProfile = [
-  rejectUnknownFields(["email", "currentPassword", "newPassword"]),
+  rejectUnknownFields(["name", "email", "currentPassword", "newPassword"]),
+  body("name")
+    .optional({ values: "falsy" })
+    .trim()
+    .isString()
+    .isLength({ min: 2, max: MAX_LEN.name })
+    .withMessage("Name must be 2-100 characters"),
   body("email").optional({ values: "falsy" }).trim().isEmail().withMessage("Valid email required"),
   body("currentPassword").optional({ values: "falsy" }).isString().isLength({ max: MAX_LEN.password }),
   body("newPassword")

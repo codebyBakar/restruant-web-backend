@@ -6,6 +6,7 @@ const {
   updateProduct,
   deleteProduct,
   deleteProductImage,
+  bulkDeleteProducts,
 } = require("../controllers/productController");
 const { protect, authorize } = require("../middleware/auth");
 const upload = require("../middleware/upload");
@@ -27,6 +28,7 @@ router.post(
 );
 
 router.put("/:id", protect, authorize("admin", "staff"), upload.handleUpload(upload.array("images", 6)), updateProduct);
+router.delete("/bulk", protect, authorize("admin"), bulkDeleteProducts);
 router.delete("/:id", protect, authorize("admin"), deleteProduct);
 router.delete("/:id/images/:publicId", protect, authorize("admin", "staff"), deleteProductImage);
 

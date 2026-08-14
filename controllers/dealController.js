@@ -81,6 +81,34 @@ exports.updateDeal = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: deal });
 });
 
+exports.bulkDeleteDeals = asyncHandler(async (req, res) => {
+  const { ids, all } = req.body;
+
+  let query = null;
+  if (all) {
+    query = {};
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const validIds = ids.filter((id) => /^[0-9a-fA-F]{24}$/.test(String(id)));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid deals selected" });
+    }
+    query = { _id: { $in: validIds } };
+  } else {
+    return res.status(400).json({ success: false, message: "No deals selected" });
+  }
+
+  const deals = await Deal.find(query).select("image");
+  if (isCloudinaryConfigured) {
+    for (const deal of deals) {
+      if (deal.image?.publicId) await cloudinary.uploader.destroy(deal.image.publicId).catch(() => {});
+    }
+  }
+
+  const result = await Deal.deleteMany(query);
+  clearCacheByPrefix("/api/deals");
+  res.status(200).json({ success: true, deleted: result.deletedCount, message: `${result.deletedCount} deal(s) deleted` });
+});
+
 exports.deleteDeal = asyncHandler(async (req, res) => {
   const deal = await Deal.findById(req.params.id);
   if (!deal) return res.status(404).json({ success: false, message: "Deal not found" });

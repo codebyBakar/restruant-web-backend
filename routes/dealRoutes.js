@@ -5,6 +5,7 @@ const {
   createDeal,
   updateDeal,
   deleteDeal,
+  bulkDeleteDeals,
 } = require("../controllers/dealController");
 const { protect, authorize } = require("../middleware/auth");
 const upload = require("../middleware/upload");
@@ -25,6 +26,7 @@ router.post(
   createDeal
 );
 router.put("/:id", protect, authorize("admin", "staff"), upload.handleUpload(upload.single("image")), updateDeal);
+router.delete("/bulk", protect, authorize("admin"), bulkDeleteDeals);
 router.delete("/:id", protect, authorize("admin"), deleteDeal);
 
 module.exports = router;

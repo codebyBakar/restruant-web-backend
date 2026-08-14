@@ -5,9 +5,11 @@ const {
   trackOrder,
   getMyOrders,
   getOrders,
+  getRecentOrders,
   getOrder,
   updateOrderStatus,
   deleteOrder,
+  bulkDeleteOrders,
   getDashboardStats,
   uploadPaymentScreenshot,
 } = require("../controllers/orderController");
@@ -39,8 +41,10 @@ router.get("/my-orders", myOrdersV, validate, getMyOrders);
 
 router.get("/", protect, authorize("admin", "staff"), getOrders);
 router.get("/stats/dashboard", protect, authorize("admin", "staff"), getDashboardStats);
+router.get("/recent", protect, authorize("admin", "staff"), getRecentOrders);
 router.get("/:id", protect, authorize("admin", "staff"), getOrder);
 router.put("/:id/status", protect, authorize("admin", "staff"), updateOrderStatus);
+router.delete("/bulk", protect, authorize("admin"), bulkDeleteOrders);
 router.delete("/:id", protect, authorize("admin"), deleteOrder);
 
 module.exports = router;

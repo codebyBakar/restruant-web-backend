@@ -99,11 +99,15 @@ exports.getMe = asyncHandler(async (req, res) => {
 // @route   PUT /api/auth/profile
 // @access  Private
 exports.updateProfile = asyncHandler(async (req, res) => {
-  const { email, currentPassword, newPassword } = req.body;
+  const { name, email, currentPassword, newPassword } = req.body;
   const user = await User.findById(req.user._id).select("+password");
 
   if (!user) {
     return res.status(404).json({ success: false, message: "User not found" });
+  }
+
+  if (name && name !== user.name) {
+    user.name = name;
   }
 
   if (email && email !== user.email) {
