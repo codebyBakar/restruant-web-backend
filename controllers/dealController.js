@@ -25,14 +25,21 @@ exports.getDeal = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: deal });
 });
 
+// Keep only items that reference an existing product — null products (deleted
+// products left in an old deal) would otherwise fail validation with a 400.
+const sanitizeDealItems = (items) =>
+  (Array.isArray(items) ? items : []).filter((it) => it && it.product).map((it) => ({ ...it, quantity: Number(it.quantity) }));
+
 exports.createDeal = asyncHandler(async (req, res) => {
   const data = { ...req.body };
   if (typeof data.items === "string") {
     try {
-      data.items = JSON.parse(data.items).map((it) => ({ ...it, quantity: Number(it.quantity) }));
+      data.items = sanitizeDealItems(JSON.parse(data.items));
     } catch {
       data.items = [];
     }
+  } else {
+    data.items = sanitizeDealItems(data.items);
   }
   if (req.file) {
     data.image = getFileUrl(req, req.file);
@@ -56,10 +63,12 @@ exports.updateDeal = asyncHandler(async (req, res) => {
   const data = { ...req.body };
   if (typeof data.items === "string") {
     try {
-      data.items = JSON.parse(data.items).map((it) => ({ ...it, quantity: Number(it.quantity) }));
+      data.items = sanitizeDealItems(JSON.parse(data.items));
     } catch {
       data.items = [];
     }
+  } else if (data.items !== undefined) {
+    data.items = sanitizeDealItems(data.items);
   }
   if (req.file) {
     if (deal.image?.publicId && isCloudinaryConfigured) {

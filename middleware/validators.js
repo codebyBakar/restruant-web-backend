@@ -244,6 +244,11 @@ const productCommon = {
       .toInt()
       .withMessage("prepTimeMinutes must be between 1 and 600"),
   isAvailable: () => body("isAvailable").optional().isBoolean().withMessage("isAvailable must be a boolean"),
+  unavailableBadge: () =>
+    body("unavailableBadge")
+      .optional({ values: "falsy" })
+      .isIn(["", "coming_soon", "unavailable"])
+      .withMessage("unavailableBadge must be coming_soon or unavailable"),
   isFeatured: () => body("isFeatured").optional().isBoolean().withMessage("isFeatured must be a boolean"),
   displayOrder: () =>
     body("displayOrder").optional().isInt({ min: 0, max: 100000 }).toInt().withMessage("displayOrder must be a non-negative integer"),
@@ -263,6 +268,7 @@ const PRODUCT_ALLOWED = [
   "calories",
   "prepTimeMinutes",
   "isAvailable",
+  "unavailableBadge",
   "isFeatured",
   "displayOrder",
 ];
@@ -282,6 +288,7 @@ const createProduct = [
   productCommon.calories(),
   productCommon.prepTimeMinutes(),
   productCommon.isAvailable(),
+  productCommon.unavailableBadge(),
   productCommon.isFeatured(),
   productCommon.displayOrder(),
 ];
@@ -301,6 +308,7 @@ const updateProduct = [
   productCommon.calories().optional({ values: "falsy" }),
   productCommon.prepTimeMinutes().optional({ values: "falsy" }),
   productCommon.isAvailable().optional({ values: "falsy" }),
+  productCommon.unavailableBadge().optional({ values: "falsy" }),
   productCommon.isFeatured().optional({ values: "falsy" }),
   productCommon.displayOrder().optional({ values: "falsy" }),
 ];

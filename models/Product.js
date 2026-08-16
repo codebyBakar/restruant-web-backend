@@ -31,6 +31,9 @@ const productSchema = new mongoose.Schema(
     calories: { type: Number },
     prepTimeMinutes: { type: Number, default: 20 },
     isAvailable: { type: Boolean, default: true },
+    // Badge shown on the user side when a product is unavailable:
+    // "coming_soon" → COMING SOON badge, "unavailable" → SOLD OUT badge, "" → no badge.
+    unavailableBadge: { type: String, enum: ["", "coming_soon", "unavailable"], default: "" },
     isFeatured: { type: Boolean, default: false },
     rating: { type: Number, default: 4.5, min: 0, max: 5 },
     reviewCount: { type: Number, default: 0 },

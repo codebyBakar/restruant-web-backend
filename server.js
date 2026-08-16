@@ -4,6 +4,7 @@ const fs = require("fs");
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const compression = require("compression");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
@@ -17,6 +18,9 @@ const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
+
+// ---------- Performance middleware ----------
+app.use(compression());
 
 // ---------- Security middleware ----------
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));

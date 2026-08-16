@@ -25,7 +25,8 @@ if (isCloudinaryConfigured) {
     cloudinary,
     params: {
       folder: "pratha-restaurant",
-      allowed_formats: ["jpg", "jpeg", "png", "webp"],
+      // No allowed_formats restriction — every image format (jpg, png, webp, gif,
+      // avif, bmp, tiff, heic, svg, ...) is accepted.
       transformation: [{ width: 1600, height: 1600, crop: "limit", quality: "auto" }],
     },
   });
