@@ -484,7 +484,6 @@ const updateOrderStatus = [
 
 const trackOrder = [
   orderNumberParam("orderNumber"),
-  query("email").optional().trim().isEmail().withMessage("Valid email required").isLength({ max: MAX_LEN.email }),
   accessTokenQuery(),
 ];
 

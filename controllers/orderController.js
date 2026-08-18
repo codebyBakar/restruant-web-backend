@@ -245,18 +245,19 @@ exports.uploadPaymentScreenshot = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: order, message: "Payment screenshot uploaded. Awaiting admin verification." });
 });
 
-// @desc Track order by order number (public, requires email match or access token)
+// @desc Track order by order number (public, order number only)
 // @route GET /api/orders/track/:orderNumber
 exports.trackOrder = asyncHandler(async (req, res) => {
   const { orderNumber } = req.params;
-  const { email, token } = req.query;
+  const { token } = req.query;
 
-  const query = { orderNumber };
+  const query = { orderNumber, deletedByUser: null };
   if (token) query.accessToken = token;
-  else query["customer.email"] = email;
+  // Also exclude admin-deleted orders from public tracking
+  query.deletedByAdmin = null;
 
   const order = await Order.findOne(query);
-  if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+  if (!order) return res.status(404).json({ success: false, message: "This order is either deleted or the order number is incorrect." });
   res.status(200).json({ success: true, data: order });
 });
 
@@ -269,19 +270,14 @@ exports.getMyOrders = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, count: orders.length, data: orders });
 });
 
-// @desc Delete one of my own previous orders (customer side, independent of admin)
+// @desc Delete one of my own previous orders (customer side, order number only)
 // @route DELETE /api/orders/my/:orderNumber
 exports.deleteMyOrder = asyncHandler(async (req, res) => {
   const { orderNumber } = req.params;
-  const { email, token } = req.query;
+  const { token } = req.query;
 
-  if (!email && !token) {
-    return res.status(400).json({ success: false, message: "Email is required" });
-  }
-
-  const query = { orderNumber };
+  const query = { orderNumber, deletedByUser: null };
   if (token) query.accessToken = token;
-  else query["customer.email"] = email;
 
   const order = await Order.findOne(query);
   if (!order) return res.status(404).json({ success: false, message: "Order not found" });

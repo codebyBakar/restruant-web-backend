@@ -17,6 +17,7 @@ const {
 const { protect, authorize } = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const upload = require("../middleware/upload");
+const { handleUpload } = upload;
 const { createOrder: createOrderV, trackOrder: trackOrderV, myOrders: myOrdersV, uploadScreenshot: uploadScreenshotV } = require("../middleware/validators");
 
 const router = express.Router();
@@ -35,8 +36,8 @@ const parseOrderBody = (req, res, next) => {
 };
 
 router.post("/", createOrderV, validate, createOrder);
-router.post("/online", upload.single("screenshot"), parseOrderBody, createOrderV, validate, createOnlineOrder);
-router.post("/:orderNumber/screenshot", uploadScreenshotV, validate, upload.single("screenshot"), uploadPaymentScreenshot);
+router.post("/online", handleUpload(upload.single("screenshot")), parseOrderBody, createOrderV, validate, createOnlineOrder);
+router.post("/:orderNumber/screenshot", uploadScreenshotV, validate, handleUpload(upload.single("screenshot")), uploadPaymentScreenshot);
 router.get("/track/:orderNumber", trackOrderV, validate, trackOrder);
 router.get("/my-orders", myOrdersV, validate, getMyOrders);
 router.delete("/my/:orderNumber", trackOrderV, validate, deleteMyOrder);
