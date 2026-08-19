@@ -46,18 +46,63 @@ const getTransporter = () => {
   return transporterPromise;
 };
 
+// Railway (Free/Hobby plans) blocks outbound SMTP ports (465/587) entirely.
+// Sending must go through an HTTPS API (port 443). If BREVO_API_KEY is set we
+// use Brevo's v3 SMTP API; otherwise we fall back to nodemailer/SMTP (local dev).
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+
+// Parse "Name <email>" / {name, email} / bare email into { name, email }
+const parseAddress = (input) => {
+  if (input && typeof input === "object") {
+    return { name: input.name || "", email: (input.address || input.email || "").trim() };
+  }
+  const str = String(input || "").trim();
+  const m = str.match(/^(.*?)<([^>]+)>$/);
+  if (m) return { name: m[1].trim(), email: m[2].trim() };
+  return { name: "", email: str };
+};
+
+const sendViaBrevoApi = async (opts) => {
+  const toList = (Array.isArray(opts.to) ? opts.to : [opts.to]).map(parseAddress);
+  const res = await fetch(BREVO_API_URL, {
+    method: "POST",
+    headers: {
+      "api-key": BREVO_API_KEY,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: parseAddress(opts.from),
+      to: toList,
+      subject: opts.subject,
+      htmlContent: opts.html,
+      textContent: opts.text,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.message || `Brevo API error (${res.status})`);
+    err.statusCode = res.status;
+    err.body = data;
+    throw err;
+  }
+  return { messageId: data.messageId, response: JSON.stringify(data) };
+};
+
 // Connection-level failures (DNS/IPv6/network) are transient — retry them with backoff.
 const RETRYABLE_ERRORS = ["ENETUNREACH", "ETIMEDOUT", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "Connection timeout", "Greeting never received"];
 
 const isRetryableError = (err) => {
   const msg = String(err?.message || err?.code || "");
-  return RETRYABLE_ERRORS.some((key) => msg.includes(key));
+  return RETRYABLE_ERRORS.some((key) => msg.includes(key)) || (err?.statusCode === 429);
 };
 
 const sendMailWithRetry = async (opts, attempts = 3) => {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
+      if (BREVO_API_KEY) return await sendViaBrevoApi(opts);
       return await (await getTransporter()).sendMail(opts);
     } catch (err) {
       lastErr = err;
@@ -284,7 +329,7 @@ const sendOrderConfirmationEmail = async (order, siteName = "Pratha", symbol = "
   const to = order?.customer?.email;
   const from = process.env.SMTP_FROM || `${siteName} <${process.env.SMTP_USER || "no-reply@pratha.com"}>`;
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (!BREVO_API_KEY && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)) {
     console.warn("[Email] Skipped: SMTP credentials not configured.");
     return { ok: false, skipped: true };
   }
@@ -315,7 +360,7 @@ const deliver = async ({ order, siteName = "Pratha", symbol = "Rs.", subject, te
   const to = order?.customer?.email;
   const from = process.env.SMTP_FROM || `${siteName} <${process.env.SMTP_USER || "no-reply@pratha.com"}>`;
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (!BREVO_API_KEY && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)) {
     console.warn("[Email] Skipped: SMTP credentials not configured.");
     return { ok: false, skipped: true };
   }
