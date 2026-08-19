@@ -19,6 +19,11 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
 
+// Behind a proxy (Railway/Render/etc.) the X-Forwarded-For header is set by the
+// edge proxy. Without this, express-rate-limit rejects requests with
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. Trust the first hop only.
+app.set("trust proxy", 1);
+
 // ---------- Performance middleware ----------
 app.use(compression());
 
