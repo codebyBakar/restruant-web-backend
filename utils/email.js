@@ -52,15 +52,27 @@ const getTransporter = () => {
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-// Parse "Name <email>" / {name, email} / bare email into { name, email }
+// Parse "Name <email>" / {name, email} / bare email into { name, email }.
+// `name` is omitted when empty — Brevo rejects name:"" as "name is missing".
 const parseAddress = (input) => {
+  let name = "";
+  let email = "";
   if (input && typeof input === "object") {
-    return { name: input.name || "", email: (input.address || input.email || "").trim() };
+    name = input.name || "";
+    email = (input.address || input.email || "").trim();
+  } else {
+    const str = String(input || "").trim();
+    const m = str.match(/^(.*?)<([^>]+)>$/);
+    if (m) {
+      name = m[1].trim();
+      email = m[2].trim();
+    } else {
+      email = str;
+    }
   }
-  const str = String(input || "").trim();
-  const m = str.match(/^(.*?)<([^>]+)>$/);
-  if (m) return { name: m[1].trim(), email: m[2].trim() };
-  return { name: "", email: str };
+  const addr = { email };
+  if (name) addr.name = name;
+  return addr;
 };
 
 const sendViaBrevoApi = async (opts) => {
