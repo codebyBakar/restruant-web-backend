@@ -46,57 +46,6 @@ const sendMailWithRetry = async (opts, attempts = 3) => {
   throw lastErr;
 };
 
-// ---- Provider dispatch -----------------------------------------------------
-// Gmail SMTP is frequently unreachable from cloud hosts (Railway/Render/etc.):
-// no IPv6 route + Gmail throttles datacenter IPv4s, so SMTP connects time out.
-// When RESEND_API_KEY is set we send over HTTPS (always reachable) via Resend,
-// falling back to SMTP if the API call fails. No API key → SMTP as before.
-
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
-
-// Resend requires a valid "Name <address>" From. SMTP_FROM may be a bare name,
-// so give it a real sender when using the API.
-const normalizeFrom = (from, siteName = "Pratha") => {
-  try {
-    const parsed = require("nodemailer/lib/addressparser")(from || "");
-    if (parsed[0]?.address) return from;
-    const name = parsed[0]?.name || siteName;
-    return `${name} <${process.env.RESEND_FROM || "onboarding@resend.dev"}>`;
-  } catch {
-    return `${siteName} <${process.env.RESEND_FROM || "onboarding@resend.dev"}>`;
-  }
-};
-
-const sendViaResend = async ({ from, to, subject, text, html }) => {
-  const res = await fetch(RESEND_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: normalizeFrom(from), to, subject, text, html }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(`Resend API ${res.status}: ${body.message || JSON.stringify(body)}`);
-  }
-  return { messageId: body.id };
-};
-
-// Try the HTTPS API first (if configured), then fall back to SMTP.
-const sendMail = async ({ from, to, subject, text, html }) => {
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const info = await sendViaResend({ from, to, subject, text, html });
-      console.log("[Email] Sent via Resend to", to, info.messageId || "");
-      return info;
-    } catch (err) {
-      console.error("[Email] Resend failed, falling back to SMTP:", err.message || err);
-    }
-  }
-  return sendMailWithRetry({ from, to, subject, text, html });
-};
-
 const currency = (n, symbol = "Rs.") => `${symbol} ${Number(n || 0).toLocaleString()}`;
 
 const orderLabel = (type) => (type === "delivery" ? "Delivery" : "Pickup");
@@ -323,7 +272,7 @@ const sendOrderConfirmationEmail = async (order, siteName = "Pratha", symbol = "
   }
 
   try {
-    const info = await sendMail({
+    const info = await sendMailWithRetry({
       from,
       to,
       subject: `Order ${order?.orderNumber} confirmed - Thank you ${order?.customer?.name}!`,
@@ -354,7 +303,7 @@ const deliver = async ({ order, siteName = "Pratha", symbol = "Rs.", subject, te
   }
 
   try {
-    const info = await sendMail({ from, to, subject, text, html });
+    const info = await sendMailWithRetry({ from, to, subject, text, html });
     console.log("[Email] Sent to", to, info.messageId || "");
     return { ok: true, info };
   } catch (err) {
@@ -571,7 +520,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
   const from = process.env.SMTP_FROM || `Pratha <${process.env.SMTP_USER || "no-reply@pratha.com"}>`;
 
   try {
-    const info = await sendMail({ from, to, subject, text, html });
+    const info = await sendMailWithRetry({ from, to, subject, text, html });
     console.log("[Contact] Sent to", to, info.messageId || "");
     return { ok: true, info };
   } catch (err) {
