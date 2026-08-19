@@ -9,6 +9,12 @@ const getTransporter = () => {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
+    // Force IPv4: cloud hosts (e.g. Railway) often have no IPv6 outbound route,
+    // and `smtp.gmail.com` may resolve to an IPv6 address first → ENETUNREACH.
+    family: 4,
+    connectionTimeout: 20000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -16,6 +22,28 @@ const getTransporter = () => {
   });
 
   return transporter;
+};
+
+// Connection-level failures (DNS/IPv6/network) are transient — retry them with backoff.
+const RETRYABLE_ERRORS = ["ENETUNREACH", "ETIMEDOUT", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "Connection timeout", "Greeting never received"];
+
+const isRetryableError = (err) => {
+  const msg = String(err?.message || err?.code || "");
+  return RETRYABLE_ERRORS.some((key) => msg.includes(key));
+};
+
+const sendMailWithRetry = async (opts, attempts = 3) => {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await getTransporter().sendMail(opts);
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableError(err) || i === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+  throw lastErr;
 };
 
 const currency = (n, symbol = "Rs.") => `${symbol} ${Number(n || 0).toLocaleString()}`;
@@ -244,7 +272,7 @@ const sendOrderConfirmationEmail = async (order, siteName = "Pratha", symbol = "
   }
 
   try {
-    const info = await getTransporter().sendMail({
+    const info = await sendMailWithRetry({
       from,
       to,
       subject: `Order ${order?.orderNumber} confirmed - Thank you ${order?.customer?.name}!`,
@@ -275,7 +303,7 @@ const deliver = async ({ order, siteName = "Pratha", symbol = "Rs.", subject, te
   }
 
   try {
-    const info = await getTransporter().sendMail({ from, to, subject, text, html });
+    const info = await sendMailWithRetry({ from, to, subject, text, html });
     console.log("[Email] Sent to", to, info.messageId || "");
     return { ok: true, info };
   } catch (err) {
@@ -492,7 +520,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
   const from = process.env.SMTP_FROM || `Pratha <${process.env.SMTP_USER || "no-reply@pratha.com"}>`;
 
   try {
-    const info = await getTransporter().sendMail({ from, to, subject, text, html });
+    const info = await sendMailWithRetry({ from, to, subject, text, html });
     console.log("[Contact] Sent to", to, info.messageId || "");
     return { ok: true, info };
   } catch (err) {
