@@ -1,27 +1,49 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
+const net = require("net");
+const { promisify } = require("util");
 
-let transporter = null;
+const resolve4Async = promisify(dns.resolve4);
 
+let transporterPromise = null;
+
+// nodemailer 9.x ignores the `family` transport option and resolves BOTH IPv4
+// and IPv6, picking an address at random. Cloud hosts (Railway/Render) often
+// have no IPv6 route, so an IPv6 pick fails instantly with ENETUNREACH.
+// We resolve the SMTP host to a literal IPv4 address and connect directly to
+// it (TLS SNI/hostname still uses the real hostname via `servername`).
 const getTransporter = () => {
-  if (transporter) return transporter;
+  if (!transporterPromise) {
+    transporterPromise = (async () => {
+      const smtpHost = process.env.SMTP_HOST;
+      let connectHost = smtpHost;
+      if (smtpHost && !net.isIP(smtpHost)) {
+        try {
+          const addresses = await resolve4Async(smtpHost);
+          if (addresses && addresses.length) connectHost = addresses[0];
+        } catch (err) {
+          console.warn("[Email] IPv4 DNS resolution failed, using hostname:", err.message || err);
+        }
+      }
 
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
-    // Force IPv4: cloud hosts (e.g. Railway) often have no IPv6 outbound route,
-    // and `smtp.gmail.com` may resolve to an IPv6 address first → ENETUNREACH.
-    family: 4,
-    connectionTimeout: 20000,
-    greetingTimeout: 15000,
-    socketTimeout: 30000,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+      transporter = nodemailer.createTransport({
+        host: connectHost,
+        servername: smtpHost,
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: process.env.SMTP_SECURE === "true",
+        connectionTimeout: 20000,
+        greetingTimeout: 15000,
+        socketTimeout: 30000,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
 
-  return transporter;
+      return transporter;
+    })();
+  }
+  return transporterPromise;
 };
 
 // Connection-level failures (DNS/IPv6/network) are transient — retry them with backoff.
@@ -36,7 +58,7 @@ const sendMailWithRetry = async (opts, attempts = 3) => {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
-      return await getTransporter().sendMail(opts);
+      return await (await getTransporter()).sendMail(opts);
     } catch (err) {
       lastErr = err;
       if (!isRetryableError(err) || i === attempts - 1) throw err;
